@@ -12,7 +12,6 @@ df_preprocessing = pd.read_csv('tweet_preprocessing1.csv')
 df_prediction = pd.read_csv('model_prediction.csv')
 eval_df = pd.read_csv('evaluation_scores.csv')
 summary_df = pd.read_csv('summary_data_pipeline.csv')
-
 cm_nb = pd.read_csv('conf_matrix_nb.csv', header=None).values
 cm_svm = pd.read_csv('conf_matrix_svm.csv', header=None).values
 
@@ -21,14 +20,12 @@ conf_matrix_dict = {
     "SVM": {"matrix": cm_svm, "labels": ["negatif", "positif"]}
 }
 
-# Judul besar di bagian atas
 st.markdown("<h1 style='text-align: center;'>Klasifikasi Opini Program KIP Kuliah di X (Twitter)</h1>", unsafe_allow_html=True)
+tab1, tab2 = st.tabs(["📊 Summary Data", "🔍 Sentimen Predict"])
 
-tab1, tab2 = st.tabs(["📊 Summary Data","🔍 Sentimen Predict"])
-
-# ==============================================================================
-# =================     TAB 1: SUMMARY DATA    =============================
-# ==============================================================================
+# ========================================================================
+# =================     TAB 1: SUMMARY DATA    ==========================
+# ========================================================================
 with tab1:
     st.markdown("#### Jumlah Data Tweet per Bulan (Pra-Modeling)")
     df_preprocessing['created_at'] = pd.to_datetime(df_preprocessing['created_at'])
@@ -44,12 +41,11 @@ with tab1:
         height = bar.get_height()
         ax.annotate(f'{int(height)}',
                     xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 3),  # Jarak ke atas
+                    xytext=(0, 3),
                     textcoords="offset points",
                     ha='center', va='bottom', fontsize=10, fontweight='bold')
     st.pyplot(fig)
 
-    # --- FORMAT PRESENTASE SPLIT JADI PERSEN (xx.xx%) ---
     summary_df_show = summary_df.copy()
     summary_df_show['Persentase (%)'] = summary_df_show['Persentase (%)'].map('{:.2f}%'.format)
 
@@ -57,14 +53,13 @@ with tab1:
     st.table(summary_df_show)
     st.caption("Tabel ini menampilkan jumlah data setelah preprocessing, split, dan SMOTE pada pipeline.")
 
-# ==============================================================================
-# ======================   TAB 2: SENTIMEN PREDICT   ===============================
-# ==============================================================================
+# ========================================================================
+# ======================   TAB 2: SENTIMEN PREDICT   ====================
+# ========================================================================
 with tab2:
     df_preprocessing['id'] = df_preprocessing.index
     reverse_label_map = {0: 'negatif', 1: 'positif'}
 
-    # Format long df_prediction
     df_long = pd.DataFrame()
     for model in ['Naive Bayes', 'SVM']:
         col = 'pred_nb' if model == 'Naive Bayes' else 'pred_svm'
@@ -77,11 +72,9 @@ with tab2:
     df_long['actual_label'] = df_long['label']
     df_long = df_long.drop(columns=['label', 'predicted'])
 
-    # Gabung dengan tweet dan tanggal
     df = pd.merge(df_long, df_preprocessing[['id', 'tweet', 'created_at']], on='id', how='left')
     df['created_at'] = pd.to_datetime(df['created_at'])
 
-    # FILTER
     fcol1, fcol2, fcol3 = st.columns([1, 1, 1])
     with fcol1:
         date_range = st.date_input("Periode:", [df['created_at'].min(), df['created_at'].max()])
@@ -90,7 +83,6 @@ with tab2:
     with fcol3:
         selected_model = st.multiselect("Model:", df['model'].unique(), default=list(df['model'].unique()))
 
-    # FILTER DATA
     filtered_df = df[
         (df['model'].isin(selected_model)) &
         (df['predicted_label'].isin(selected_sentiment)) &
@@ -100,7 +92,23 @@ with tab2:
         ))
     ]
 
-    # SCORECARD
+    # Tambah kolom: TP, TN, FP, FN
+    def get_prediction_type(row):
+        pred = row['predicted_label']
+        actual = row['actual_label']
+        if pred == 'positif' and actual == 'positif':
+            return 'TP'
+        elif pred == 'negatif' and actual == 'negatif':
+            return 'TN'
+        elif pred == 'positif' and actual == 'negatif':
+            return 'FP'
+        elif pred == 'negatif' and actual == 'positif':
+            return 'FN'
+        else:
+            return 'Unknown'
+
+    filtered_df['prediction_type'] = filtered_df.apply(get_prediction_type, axis=1)
+
     sc1, sc2, sc3 = st.columns(3)
     nb_df = df[
         (df['model'] == 'Naive Bayes') &
@@ -122,7 +130,6 @@ with tab2:
     sc2.metric("Akurasi SVM", f"{acc_svm:.2f}%")
     sc3.metric("Total Tweet", len(filtered_df))
 
-    # PERBANDINGAN METRIK & CONFUSION MATRIX
     st.write("")
     if filtered_df.empty:
         st.info("Tidak ada data yang sesuai filter.")
@@ -150,8 +157,6 @@ with tab2:
             plt.ylabel('Actual')
             st.pyplot(plt.gcf())
 
-    # PIE & BAR CHART DISTRIBUSI SENTIMEN
-    st.write("")
     dcol1, dcol2 = st.columns([1, 2])
     with dcol1:
         st.markdown("#### Distribusi Sentimen")
@@ -160,7 +165,6 @@ with tab2:
         else:
             plt.figure(figsize=(4, 4))
             filtered_df['predicted_label'].value_counts().plot.pie(autopct='%1.1f%%', startangle=90)
-            plt.title("")
             plt.ylabel("")
             st.pyplot(plt.gcf())
     with dcol2:
@@ -190,9 +194,10 @@ with tab2:
             else:
                 st.write("Tidak ada data")
 
-    # DETAIL DATA
+    # DETAIL DATA TABLE
     st.write("")
-    st.markdown("#### Table: Detail Tweet, Sentimen, Model, dan Akurasi Prediksi")
-    st.dataframe(filtered_df[['created_at', 'tweet', 'predicted_label', 'actual_label', 'model']], use_container_width=True)
-
-    
+    st.markdown("#### Table: Detail Tweet, Sentimen, Model, dan Tipe Prediksi")
+    st.dataframe(
+        filtered_df[['created_at', 'tweet', 'predicted_label', 'actual_label', 'model', 'prediction_type']],
+        use_container_width=True
+    )
